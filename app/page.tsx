@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AuthPanel } from "./auth-panel";
+import { getSupabaseBrowserClient } from "./supabase";
 
 const areas = [
   { name: "Computação", color: "#78a8ff", count: 34, x: 64, y: 26 },
@@ -61,25 +63,97 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [peopleResults, setPeopleResults] = useState<
+    Array<{ id: string; name: string; slug: string; cohort: number | null }>
+  >([]);
+  const [searching, setSearching] = useState(false);
+  const [stats, setStats] = useState({
+    people: 683,
+    cohorts: 35,
+    projects: 0,
+    macroAreas: 13,
+    subAreas: 0,
+    evaluations: 0,
+  });
   const handleSessionChange = useCallback(
     (nextSession: Session | null) => setSession(nextSession),
     [],
   );
 
-  const results = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return [];
-    return [
-      ...projects
-        .filter((item) => `${item.title} ${item.person} ${item.areas.join(" ")}`.toLowerCase().includes(term))
-        .map((item) => ({ primary: item.title, secondary: `${item.person} · Projeto` })),
-      ...disciplines
-        .filter((item) => `${item.code} ${item.name}`.toLowerCase().includes(term))
-        .map((item) => ({ primary: item.name, secondary: `${item.code} · Disciplina` })),
-      ...areas
-        .filter((item) => item.name.toLowerCase().includes(term))
-        .map((item) => ({ primary: item.name, secondary: `${item.count} pessoas · Área` })),
-    ].slice(0, 5);
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const client = supabase;
+
+    async function loadStats() {
+      const [
+        peopleResponse,
+        projectsResponse,
+        macroAreasResponse,
+        subAreasResponse,
+        evaluationsResponse,
+      ] = await Promise.all([
+        client.from("people").select("cohort"),
+        client.from("projects").select("*", { count: "exact", head: true }),
+        client
+          .from("macro_areas")
+          .select("*", { count: "exact", head: true }),
+        client.from("sub_areas").select("*", { count: "exact", head: true }),
+        client
+          .from("course_evaluations")
+          .select("*", { count: "exact", head: true }),
+      ]);
+
+      const cohorts = new Set(
+        (peopleResponse.data ?? [])
+          .map((person) => person.cohort)
+          .filter((cohort): cohort is number => cohort !== null),
+      );
+      setStats({
+        people: peopleResponse.data?.length ?? 0,
+        cohorts: cohorts.size,
+        projects: projectsResponse.count ?? 0,
+        macroAreas: macroAreasResponse.count ?? 0,
+        subAreas: subAreasResponse.count ?? 0,
+        evaluations: evaluationsResponse.count ?? 0,
+      });
+    }
+
+    void loadStats();
+  }, []);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) return;
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const client = supabase;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      const safeTerm = term.replace(/[%_,()]/g, "");
+      const cohortMatch = safeTerm.match(/^t?\s*(\d{1,2})$/i);
+      let request = client
+        .from("people")
+        .select("id, name, slug, cohort")
+        .order("name")
+        .limit(8);
+
+      request = cohortMatch
+        ? request.eq("cohort", Number(cohortMatch[1]))
+        : request.ilike("name", `%${safeTerm}%`);
+
+      const { data } = await request;
+      if (!active) return;
+      setPeopleResults(data ?? []);
+      setSearching(false);
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [query]);
 
   return (
@@ -118,17 +192,26 @@ export default function Home() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Busque pessoas, projetos, áreas ou disciplinas"
+              placeholder="Busque uma pessoa pelo nome ou turma"
               aria-label="Buscar na Constelação Molecular"
             />
             <kbd>⌘ K</kbd>
-            {query && (
+            {query.trim().length >= 2 && (
               <div className="search-results">
-                {results.length ? results.map((result) => (
-                  <button key={`${result.primary}-${result.secondary}`} onClick={() => setQuery(result.primary)}>
-                    <strong>{result.primary}</strong><small>{result.secondary}</small>
-                  </button>
-                )) : <p>Nenhum ponto encontrado nessa constelação.</p>}
+                {searching ? (
+                  <p>Buscando na constelação…</p>
+                ) : peopleResults.length ? (
+                  peopleResults.map((person) => (
+                    <Link key={person.id} href={`/pessoas/${person.slug}`}>
+                      <strong>{person.name}</strong>
+                      <small>
+                        {person.cohort ? `T${person.cohort}` : "Turma não informada"}
+                      </small>
+                    </Link>
+                  ))
+                ) : (
+                  <p>Nenhuma pessoa encontrada nessa constelação.</p>
+                )}
               </div>
             )}
           </div>
@@ -173,10 +256,10 @@ export default function Home() {
       </section>
 
       <section className="stats" aria-label="Números da comunidade">
-        <article><strong>186</strong><span>pessoas mapeadas</span><small>de 35 turmas</small></article>
-        <article><strong>94</strong><span>projetos cadastrados</span><small>61 em andamento</small></article>
-        <article><strong>12</strong><span>macroáreas</span><small>47 subáreas</small></article>
-        <article><strong>328</strong><span>disciplinas avaliadas</span><small>em 19 unidades da USP</small></article>
+        <article><strong>{stats.people}</strong><span>pessoas mapeadas</span><small>de {stats.cohorts} turmas</small></article>
+        <article><strong>{stats.projects}</strong><span>projetos cadastrados</span><small>dados da comunidade</small></article>
+        <article><strong>{stats.macroAreas}</strong><span>macroáreas</span><small>{stats.subAreas} subáreas</small></article>
+        <article><strong>{stats.evaluations}</strong><span>avaliações de disciplinas</span><small>experiências compartilhadas</small></article>
       </section>
 
       <section className="content-section" id="projetos">

@@ -37,6 +37,9 @@ export function AuthPanel({
   const [profileResults, setProfileResults] = useState<PersonOption[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [editingCohort, setEditingCohort] = useState(false);
+  const [cohortDraft, setCohortDraft] = useState("");
+  const [savingCohort, setSavingCohort] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -139,7 +142,10 @@ export function AuthPanel({
           .eq("id", claim.person_id)
           .single();
 
-        if (active && person) setClaimedProfile(person);
+        if (active && person) {
+          setClaimedProfile(person);
+          setCohortDraft(person.cohort?.toString() ?? "");
+        }
       }
       if (active) setProfileLoading(false);
     }
@@ -271,6 +277,7 @@ export function AuthPanel({
       data === "perfil_ja_associado_a_voce"
     ) {
       setClaimedProfile(person);
+      setCohortDraft(person.cohort?.toString() ?? "");
       setProfileResults([]);
       setProfileQuery("");
       setMessage("Perfil associado à sua conta com sucesso.");
@@ -278,6 +285,39 @@ export function AuthPanel({
     }
 
     setMessage("Solicitação registrada.");
+  }
+
+  async function saveCohort(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!claimedProfile) return;
+
+    const cohort = Number(cohortDraft);
+    if (!Number.isInteger(cohort) || cohort < 1 || cohort > 99) {
+      setError("Informe uma turma entre T1 e T99.");
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    setSavingCohort(true);
+    setError("");
+    setMessage("");
+    const { data, error: updateError } = await supabase
+      .from("people")
+      .update({ cohort })
+      .eq("id", claimedProfile.id)
+      .select("id, name, cohort")
+      .single();
+    setSavingCohort(false);
+
+    if (updateError || !data) {
+      setError("Não foi possível atualizar a turma.");
+      return;
+    }
+
+    setClaimedProfile(data);
+    setEditingCohort(false);
+    setMessage("Turma atualizada e registrada no histórico de edições.");
   }
 
   if (!open) return null;
@@ -306,17 +346,52 @@ export function AuthPanel({
             <div className="profile-claim">
               <h3>Seu perfil público</h3>
               {claimedProfile ? (
-                <div className="claimed-profile">
-                  <span aria-hidden="true">✓</span>
-                  <div>
-                    <strong>{claimedProfile.name}</strong>
-                    <small>
-                      {claimedProfile.cohort
-                        ? `Turma T${claimedProfile.cohort}`
-                        : "Turma não informada"}
-                    </small>
+                <>
+                  <div className="claimed-profile">
+                    <span aria-hidden="true">✓</span>
+                    <div>
+                      <strong>{claimedProfile.name}</strong>
+                      <small>
+                        {claimedProfile.cohort
+                          ? `Turma T${claimedProfile.cohort}`
+                          : "Turma não informada"}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-edit-button"
+                      onClick={() => setEditingCohort(!editingCohort)}
+                    >
+                      {editingCohort ? "Cancelar" : "Editar turma"}
+                    </button>
                   </div>
-                </div>
+                  {editingCohort && (
+                    <form className="cohort-form" onSubmit={saveCohort}>
+                      <label htmlFor="cohort-number">Número da turma</label>
+                      <div>
+                        <span>T</span>
+                        <input
+                          id="cohort-number"
+                          type="number"
+                          min="1"
+                          max="99"
+                          step="1"
+                          value={cohortDraft}
+                          onChange={(event) =>
+                            setCohortDraft(event.target.value)
+                          }
+                          required
+                        />
+                        <button type="submit" disabled={savingCohort}>
+                          {savingCohort ? "Salvando…" : "Salvar"}
+                        </button>
+                      </div>
+                      <small>
+                        Use sua turma de origem, mesmo que tenha mudado depois.
+                      </small>
+                    </form>
+                  )}
+                </>
               ) : (
                 <>
                   <p>
