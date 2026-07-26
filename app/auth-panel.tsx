@@ -16,15 +16,27 @@ type AuthPanelProps = {
   onSessionChange?: (session: Session | null) => void;
 };
 
+type PersonOption = {
+  id: string;
+  name: string;
+  cohort: number | null;
+};
+
 export function AuthPanel({
   open,
   onClose,
   onSessionChange,
+}: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [session, setSession] = useState<Session | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+  const [claimedProfile, setClaimedProfile] = useState<PersonOption | null>(null);
+  const [profileQuery, setProfileQuery] = useState("");
+  const [profileResults, setProfileResults] = useState<PersonOption[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -97,6 +109,80 @@ export function AuthPanel({
   }, [session]);
 
   useEffect(() => {
+    if (!session) return;
+
+    let active = true;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const client = supabase;
+    const userId = session.user.id;
+
+    async function loadClaimedProfile() {
+      setProfileLoading(true);
+      const { data: claim, error: claimError } = await client
+        .from("profile_claims")
+        .select("person_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!active) return;
+      if (claimError) {
+        setError("Não foi possível consultar seu perfil agora.");
+        setProfileLoading(false);
+        return;
+      }
+
+      if (claim) {
+        const { data: person } = await client
+          .from("people")
+          .select("id, name, cohort")
+          .eq("id", claim.person_id)
+          .single();
+
+        if (active && person) setClaimedProfile(person);
+      }
+      if (active) setProfileLoading(false);
+    }
+
+    void loadClaimedProfile();
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (!session || claimedProfile || profileQuery.trim().length < 2) return;
+
+    let active = true;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const client = supabase;
+    const timer = window.setTimeout(async () => {
+      setProfileLoading(true);
+      const safeQuery = profileQuery.trim().replace(/[%_]/g, "");
+      const { data, error: searchError } = await client
+        .from("people")
+        .select("id, name, cohort")
+        .ilike("name", `%${safeQuery}%`)
+        .order("name")
+        .limit(8);
+
+      if (!active) return;
+      setProfileLoading(false);
+      if (searchError) {
+        setError("Não foi possível buscar os perfis agora.");
+        return;
+      }
+      setProfileResults(data ?? []);
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [session, claimedProfile, profileQuery]);
+
+  useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -146,7 +232,52 @@ export function AuthPanel({
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     await supabase.auth.signOut();
+    setClaimedProfile(null);
+    setProfileResults([]);
+    setProfileQuery("");
     setMessage("Você saiu da sua conta.");
+  }
+
+  async function claimProfile(person: PersonOption) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    setClaimingId(person.id);
+    setError("");
+    setMessage("");
+    const { data, error: claimError } = await supabase.rpc("claim_profile", {
+      target_person_id: person.id,
+    });
+    setClaimingId(null);
+
+    if (claimError) {
+      setError(
+        claimError.message.includes("usp")
+          ? "Sua conta precisa usar um e-mail USP confirmado."
+          : "Não foi possível reivindicar este perfil agora.",
+      );
+      return;
+    }
+
+    if (data === "contestacao_enviada") {
+      setMessage(
+        "Este perfil já estava associado. Seu pedido foi enviado para análise manual.",
+      );
+      return;
+    }
+
+    if (
+      data === "perfil_associado" ||
+      data === "perfil_ja_associado_a_voce"
+    ) {
+      setClaimedProfile(person);
+      setProfileResults([]);
+      setProfileQuery("");
+      setMessage("Perfil associado à sua conta com sucesso.");
+      return;
+    }
+
+    setMessage("Solicitação registrada.");
   }
 
   if (!open) return null;
@@ -172,6 +303,72 @@ export function AuthPanel({
           <div className="auth-session">
             <p>Conta conectada:</p>
             <strong>{session.user.email}</strong>
+            <div className="profile-claim">
+              <h3>Seu perfil público</h3>
+              {claimedProfile ? (
+                <div className="claimed-profile">
+                  <span aria-hidden="true">✓</span>
+                  <div>
+                    <strong>{claimedProfile.name}</strong>
+                    <small>
+                      {claimedProfile.cohort
+                        ? `Turma T${claimedProfile.cohort}`
+                        : "Turma não informada"}
+                    </small>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p>
+                    Busque seu nome para ligar esta conta USP à sua identidade.
+                  </p>
+                  <label htmlFor="profile-search">Nome completo</label>
+                  <input
+                    id="profile-search"
+                    type="search"
+                    value={profileQuery}
+                    onChange={(event) => setProfileQuery(event.target.value)}
+                    placeholder="Digite pelo menos duas letras"
+                    autoComplete="off"
+                  />
+                  {profileLoading && (
+                    <p className="profile-search-status">Buscando…</p>
+                  )}
+                  {!profileLoading &&
+                    profileQuery.trim().length >= 2 &&
+                    profileResults.length === 0 && (
+                      <p className="profile-search-status">
+                        Nenhum perfil encontrado.
+                      </p>
+                    )}
+                  {profileResults.length > 0 && (
+                    <div className="profile-results">
+                      {profileResults.map((person) => (
+                        <div className="profile-result" key={person.id}>
+                          <div>
+                            <strong>{person.name}</strong>
+                            <small>
+                              {person.cohort
+                                ? `Turma T${person.cohort}`
+                                : "Turma não informada"}
+                            </small>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => claimProfile(person)}
+                            disabled={claimingId === person.id}
+                          >
+                            {claimingId === person.id
+                              ? "Associando…"
+                              : "Este é meu perfil"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
             <p className="auth-help">
               Sua sessão expira após 2 horas sem atividade ou 12 horas no total.
             </p>
