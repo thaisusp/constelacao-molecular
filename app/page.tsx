@@ -15,30 +15,6 @@ const areas = [
   { name: "Humanidades", color: "#8bd6e6", count: 14, x: 48, y: 39 },
 ];
 
-const projects = [
-  {
-    title: "Conceitos emocionais em modelos de linguagem",
-    person: "Thaís Martins",
-    level: "IC do Avançado",
-    areas: ["Computação", "Linguística"],
-    color: "#78a8ff",
-  },
-  {
-    title: "Dinâmica de ecossistemas urbanos",
-    person: "Marina Oliveira",
-    level: "Mestrado",
-    areas: ["Biologia", "Matemática"],
-    color: "#72d4ad",
-  },
-  {
-    title: "Matéria escura e lentes gravitacionais",
-    person: "Rafael Santos",
-    level: "IC Independente",
-    areas: ["Física"],
-    color: "#f1c76d",
-  },
-];
-
 const disciplines = [
   { code: "MAC0508", name: "Introdução ao Processamento de Língua Natural", score: "4,7", load: "Alta" },
   { code: "MAE0302", name: "Probabilidade", score: "4,3", load: "Alta" },
@@ -66,6 +42,15 @@ export default function Home() {
   const [peopleResults, setPeopleResults] = useState<
     Array<{ id: string; name: string; slug: string; cohort: number | null }>
   >([]);
+  const [publicProjects, setPublicProjects] = useState<
+    Array<{
+      id: string;
+      title: string;
+      level: string;
+      person: string;
+      personSlug: string;
+    }>
+  >([]);
   const [searching, setSearching] = useState(false);
   const [stats, setStats] = useState({
     people: 683,
@@ -92,6 +77,7 @@ export default function Home() {
         macroAreasResponse,
         subAreasResponse,
         evaluationsResponse,
+        recentProjectsResponse,
       ] = await Promise.all([
         client.from("people").select("cohort"),
         client.from("projects").select("*", { count: "exact", head: true }),
@@ -102,6 +88,12 @@ export default function Home() {
         client
           .from("course_evaluations")
           .select("*", { count: "exact", head: true }),
+        client
+          .from("projects")
+          .select("id, title, level, owner_person_id")
+          .eq("status", "publicado")
+          .order("created_at", { ascending: false })
+          .limit(3),
       ]);
 
       const cohorts = new Set(
@@ -117,6 +109,38 @@ export default function Home() {
         subAreas: subAreasResponse.count ?? 0,
         evaluations: evaluationsResponse.count ?? 0,
       });
+
+      const recentProjects = recentProjectsResponse.data ?? [];
+      if (recentProjects.length) {
+        const ownerIds = [
+          ...new Set(
+            recentProjects.map((project) => project.owner_person_id),
+          ),
+        ];
+        const { data: owners } = await client
+          .from("people")
+          .select("id, name, slug")
+          .in("id", ownerIds);
+        const ownerById = new Map(
+          (owners ?? []).map((owner) => [owner.id, owner]),
+        );
+        setPublicProjects(
+          recentProjects.flatMap((project) => {
+            const owner = ownerById.get(project.owner_person_id);
+            return owner
+              ? [
+                  {
+                    id: project.id,
+                    title: project.title,
+                    level: project.level,
+                    person: owner.name,
+                    personSlug: owner.slug,
+                  },
+                ]
+              : [];
+          }),
+        );
+      }
     }
 
     void loadStats();
@@ -268,16 +292,23 @@ export default function Home() {
           <a href="#">Ver todos os projetos →</a>
         </div>
         <div className="project-grid">
-          {projects.map((project) => (
-            <article className="project-card" key={project.title}>
-              <div className="card-line" style={{ background: project.color }} />
+          {publicProjects.length ? publicProjects.map((project) => (
+            <article className="project-card" key={project.id}>
+              <div className="card-line" />
               <span className="level">{project.level}</span>
               <h3>{project.title}</h3>
               <p>{project.person}</p>
-              <div>{project.areas.map((area) => <span className="tag" key={area}>{area}</span>)}</div>
-              <a href="#">Conhecer projeto <span>↗</span></a>
+              <Link href={`/pessoas/${project.personSlug}`}>
+                Ver perfil <span>↗</span>
+              </Link>
             </article>
-          ))}
+          )) : (
+            <div className="empty-content">
+              <span>✦</span>
+              <p>O primeiro projeto da constelação pode ser o seu.</p>
+              <button onClick={() => setAuthOpen(true)}>Cadastrar projeto</button>
+            </div>
+          )}
         </div>
       </section>
 

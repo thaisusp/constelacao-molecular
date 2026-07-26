@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase";
+import { ProjectForm } from "./project-form";
 
 const MAX_SESSION_MS = 12 * 60 * 60 * 1000;
 const INACTIVITY_MS = 2 * 60 * 60 * 1000;
@@ -444,6 +445,7 @@ export function AuthPanel({
                 </>
               )}
             </div>
+            {claimedProfile && <ProjectForm personId={claimedProfile.id} />}
             <p className="auth-help">
               Sua sessão expira após 2 horas sem atividade ou 12 horas no total.
             </p>
