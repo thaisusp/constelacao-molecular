@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
   displayName: string;
+  email: string;
   fullName: string | null;
 };
 
