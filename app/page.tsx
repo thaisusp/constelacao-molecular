@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { AuthPanel } from "./auth-panel";
 
 const areas = [
   { name: "Computação", color: "#78a8ff", count: 34, x: 64, y: 26 },
@@ -57,6 +59,12 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [activeArea, setActiveArea] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const handleSessionChange = useCallback(
+    (nextSession: Session | null) => setSession(nextSession),
+    [],
+  );
 
   const results = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -93,7 +101,9 @@ export default function Home() {
           <a href="#mapa">Mapa</a>
           <a href="#sobre">Sobre</a>
         </nav>
-        <a className="login-link" href="#perfil">Entrar <span>↗</span></a>
+        <button className="login-link" onClick={() => setAuthOpen(true)}>
+          {session ? "Minha conta" : "Entrar"} <span>↗</span>
+        </button>
       </header>
 
       <section className="hero" id="inicio">
@@ -211,7 +221,9 @@ export default function Home() {
         <p className="eyebrow"><span>✦</span> Você faz parte deste mapa</p>
         <h2>Sua trajetória também forma conexões.</h2>
         <p>Reivindique seu perfil, registre seus projetos e ajude a construir a memória acadêmica do CM.</p>
-        <a className="primary-button" href="mailto:constelacaomolecular@usp.br">Reivindicar meu perfil <span>→</span></a>
+        <button className="primary-button" onClick={() => setAuthOpen(true)}>
+          {session ? "Acessar meu perfil" : "Reivindicar meu perfil"} <span>→</span>
+        </button>
       </section>
 
       <footer id="sobre">
@@ -219,6 +231,11 @@ export default function Home() {
         <p>Uma iniciativa independente feita para conectar a comunidade do Ciências Moleculares.</p>
         <span>São Paulo · 2026</span>
       </footer>
+      <AuthPanel
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSessionChange={handleSessionChange}
+      />
     </main>
   );
 }
