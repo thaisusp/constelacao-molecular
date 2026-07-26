@@ -31,7 +31,16 @@ type OwnedProject = {
   summary: string | null;
   institution: string | null;
   project_url: string | null;
+  start_year: number | null;
+  end_year: number | null;
+  keywords: string[];
+  participant_names: string[];
   status: string;
+};
+
+type AdvisorEntry = {
+  name: string;
+  institution: string;
 };
 
 type ProjectFormProps = {
@@ -51,6 +60,13 @@ export function ProjectForm({ personId }: ProjectFormProps) {
   const [summary, setSummary] = useState("");
   const [institution, setInstitution] = useState("");
   const [projectUrl, setProjectUrl] = useState("");
+  const [startYear, setStartYear] = useState("");
+  const [endYear, setEndYear] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [participants, setParticipants] = useState("");
+  const [advisors, setAdvisors] = useState<AdvisorEntry[]>([
+    { name: "", institution: "" },
+  ]);
   const [customArea, setCustomArea] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -62,7 +78,7 @@ export function ProjectForm({ personId }: ProjectFormProps) {
     const { data } = await supabase
       .from("projects")
       .select(
-        "id, title, level, summary, institution, project_url, status, created_at",
+        "id, title, level, summary, institution, project_url, start_year, end_year, keywords, participant_names, status, created_at",
       )
       .eq("owner_person_id", personId)
       .order("created_at", { ascending: false });
@@ -84,7 +100,7 @@ export function ProjectForm({ personId }: ProjectFormProps) {
         client
           .from("projects")
           .select(
-            "id, title, level, summary, institution, project_url, status, created_at",
+            "id, title, level, summary, institution, project_url, start_year, end_year, keywords, participant_names, status, created_at",
           )
           .eq("owner_person_id", personId)
           .order("created_at", { ascending: false }),
@@ -99,12 +115,24 @@ export function ProjectForm({ personId }: ProjectFormProps) {
 
   const groupedAreas = useMemo(
     () =>
-      macroAreas.map((macroArea) => ({
-        ...macroArea,
-        subAreas: subAreas.filter(
-          (subArea) => subArea.macro_area_id === macroArea.id,
-        ),
-      })),
+      [...macroAreas]
+        .sort((a, b) => {
+          const aOther = /^outr/i.test(a.name);
+          const bOther = /^outr/i.test(b.name);
+          if (aOther !== bOther) return aOther ? 1 : -1;
+          return a.name.localeCompare(b.name, "pt-BR");
+        })
+        .map((macroArea) => ({
+          ...macroArea,
+          subAreas: subAreas
+            .filter((subArea) => subArea.macro_area_id === macroArea.id)
+            .sort((a, b) => {
+              const aOther = /^outr/i.test(a.name);
+              const bOther = /^outr/i.test(b.name);
+              if (aOther !== bOther) return aOther ? 1 : -1;
+              return a.name.localeCompare(b.name, "pt-BR");
+            }),
+        })),
     [macroAreas, subAreas],
   );
 
@@ -123,6 +151,11 @@ export function ProjectForm({ personId }: ProjectFormProps) {
     setSummary("");
     setInstitution("");
     setProjectUrl("");
+    setStartYear("");
+    setEndYear("");
+    setKeywords("");
+    setParticipants("");
+    setAdvisors([{ name: "", institution: "" }]);
     setCustomArea("");
     setSelectedAreas([]);
   }
@@ -136,13 +169,24 @@ export function ProjectForm({ personId }: ProjectFormProps) {
     setSummary(project.summary ?? "");
     setInstitution(project.institution ?? "");
     setProjectUrl(project.project_url ?? "");
+    setStartYear(project.start_year?.toString() ?? "");
+    setEndYear(project.end_year?.toString() ?? "");
+    setKeywords((project.keywords ?? []).join(", "));
+    setParticipants((project.participant_names ?? []).join(", "));
     setMessage("");
     setError("");
 
-    const { data: areaRows } = await supabase
-      .from("project_areas")
-      .select("sub_area_id, custom_area_name")
-      .eq("project_id", project.id);
+    const [areasResponse, advisorsResponse] = await Promise.all([
+      supabase
+        .from("project_areas")
+        .select("sub_area_id, custom_area_name")
+        .eq("project_id", project.id),
+      supabase
+        .from("project_advisors")
+        .select("advisor_name, institution")
+        .eq("project_id", project.id),
+    ]);
+    const areaRows = areasResponse.data;
     setSelectedAreas(
       (areaRows ?? [])
         .map((area) => area.sub_area_id)
@@ -157,6 +201,37 @@ export function ProjectForm({ personId }: ProjectFormProps) {
         .filter(Boolean)
         .join(", "),
     );
+    setAdvisors(
+      advisorsResponse.data?.length
+        ? advisorsResponse.data.map((advisor) => ({
+            name: advisor.advisor_name,
+            institution: advisor.institution ?? "",
+          }))
+        : [{ name: "", institution: "" }],
+    );
+  }
+
+  function updateAdvisor(
+    index: number,
+    field: keyof AdvisorEntry,
+    value: string,
+  ) {
+    setAdvisors((current) =>
+      current.map((advisor, advisorIndex) =>
+        advisorIndex === index ? { ...advisor, [field]: value } : advisor,
+      ),
+    );
+  }
+
+  function splitList(value: string) {
+    return [
+      ...new Set(
+        value
+          .split(/[,\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ];
   }
 
   async function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -166,6 +241,14 @@ export function ProjectForm({ personId }: ProjectFormProps) {
 
     if (!selectedAreas.length && !customArea.trim()) {
       setError("Selecione ao menos uma subárea ou informe outra área.");
+      return;
+    }
+    if (
+      startYear &&
+      endYear &&
+      Number(endYear) < Number(startYear)
+    ) {
+      setError("O ano final não pode ser anterior ao ano inicial.");
       return;
     }
 
@@ -180,6 +263,10 @@ export function ProjectForm({ personId }: ProjectFormProps) {
       summary: summary.trim() || null,
       institution: institution.trim() || null,
       project_url: projectUrl.trim() || null,
+      start_year: startYear ? Number(startYear) : null,
+      end_year: endYear ? Number(endYear) : null,
+      keywords: splitList(keywords),
+      participant_names: splitList(participants),
       status: "publicado",
     };
 
@@ -206,13 +293,13 @@ export function ProjectForm({ personId }: ProjectFormProps) {
     }
 
     if (editingId) {
-      const { error: removeAreasError } = await supabase
-        .from("project_areas")
-        .delete()
-        .eq("project_id", editingId);
-      if (removeAreasError) {
+      const [removeAreas, removeAdvisors] = await Promise.all([
+        supabase.from("project_areas").delete().eq("project_id", editingId),
+        supabase.from("project_advisors").delete().eq("project_id", editingId),
+      ]);
+      if (removeAreas.error || removeAdvisors.error) {
         setSaving(false);
-        setError("Não foi possível atualizar as áreas do projeto.");
+        setError("Não foi possível atualizar os vínculos do projeto.");
         return;
       }
     }
@@ -244,6 +331,24 @@ export function ProjectForm({ personId }: ProjectFormProps) {
       setSaving(false);
       setError("Não foi possível salvar as áreas do projeto.");
       return;
+    }
+
+    const advisorRows = advisors
+      .filter((advisor) => advisor.name.trim())
+      .map((advisor) => ({
+        project_id: project.id,
+        advisor_name: advisor.name.trim(),
+        institution: advisor.institution.trim() || null,
+      }));
+    if (advisorRows.length) {
+      const { error: advisorsError } = await supabase
+        .from("project_advisors")
+        .insert(advisorRows);
+      if (advisorsError) {
+        setSaving(false);
+        setError("O projeto foi salvo, mas os orientadores não foram atualizados.");
+        return;
+      }
     }
 
     const wasEditing = Boolean(editingId);
@@ -392,6 +497,30 @@ export function ProjectForm({ personId }: ProjectFormProps) {
               onChange={(event) => setSummary(event.target.value)}
               rows={4}
             />
+            <div className="project-year-fields">
+              <label>
+                Ano inicial
+                <input
+                  type="number"
+                  min="1991"
+                  max="2100"
+                  value={startYear}
+                  onChange={(event) => setStartYear(event.target.value)}
+                  placeholder="2026"
+                />
+              </label>
+              <label>
+                Ano final
+                <input
+                  type="number"
+                  min="1991"
+                  max="2100"
+                  value={endYear}
+                  onChange={(event) => setEndYear(event.target.value)}
+                  placeholder="Em andamento"
+                />
+              </label>
+            </div>
             <label htmlFor="project-institution">Instituição</label>
             <input
               id="project-institution"
@@ -406,6 +535,73 @@ export function ProjectForm({ personId }: ProjectFormProps) {
               onChange={(event) => setProjectUrl(event.target.value)}
               placeholder="https://"
             />
+            <label htmlFor="project-keywords">Palavras-chave</label>
+            <input
+              id="project-keywords"
+              value={keywords}
+              onChange={(event) => setKeywords(event.target.value)}
+              placeholder="interpretabilidade, LLMs, emoções"
+            />
+            <small>Separe as palavras-chave por vírgulas.</small>
+
+            <label htmlFor="project-participants">Participantes</label>
+            <textarea
+              id="project-participants"
+              value={participants}
+              onChange={(event) => setParticipants(event.target.value)}
+              rows={2}
+              placeholder="Um nome por linha ou separados por vírgulas"
+            />
+
+            <fieldset className="advisor-fields">
+              <legend>Orientadores</legend>
+              {advisors.map((advisor, index) => (
+                <div key={index}>
+                  <input
+                    value={advisor.name}
+                    onChange={(event) =>
+                      updateAdvisor(index, "name", event.target.value)
+                    }
+                    placeholder="Nome do orientador"
+                    aria-label={`Nome do orientador ${index + 1}`}
+                  />
+                  <input
+                    value={advisor.institution}
+                    onChange={(event) =>
+                      updateAdvisor(index, "institution", event.target.value)
+                    }
+                    placeholder="Instituição"
+                    aria-label={`Instituição do orientador ${index + 1}`}
+                  />
+                  {advisors.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdvisors((current) =>
+                          current.filter(
+                            (_, advisorIndex) => advisorIndex !== index,
+                          ),
+                        )
+                      }
+                      aria-label={`Remover orientador ${index + 1}`}
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setAdvisors((current) => [
+                    ...current,
+                    { name: "", institution: "" },
+                  ])
+                }
+              >
+                + Adicionar orientador
+              </button>
+            </fieldset>
           </div>
         </details>
 

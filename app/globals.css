@@ -85,6 +85,10 @@ nav a:hover::after { right: 0; }
 .claimed-profile strong, .profile-result strong { color: var(--ink); font-size: 13px; }
 .claimed-profile small, .profile-result small { color: #8f9aaf; font-size: 11px; }
 .profile-edit-button { margin-left: auto; border: 0; padding: 5px 0; color: var(--gold-bright); background: transparent; font-size: 10px; cursor: pointer; }
+.profile-details-editor { display: grid; gap: 10px; margin-top: 5px; padding-top: 12px; border-top: 1px solid var(--line); }
+.profile-details-editor > button { width: fit-content; border: 0; padding: 0; color: var(--gold-bright); background: transparent; font-size: 11px; cursor: pointer; }
+.profile-details-editor form { display: grid; gap: 9px; }
+.profile-details-editor form > small { color: #8f9aaf; font-size: 11px; text-align: right; }
 .cohort-form { display: grid; gap: 8px; padding-top: 7px; border-top: 1px solid var(--line); }
 .cohort-form > div { display: flex; align-items: center; gap: 8px; }
 .cohort-form > div > span { color: var(--gold-bright); font-family: Georgia, serif; font-size: 20px; }
@@ -119,6 +123,13 @@ nav a:hover::after { right: 0; }
 .area-checklist label { display: flex; align-items: flex-start; gap: 8px; padding: 6px; color: #c7ced9; font-size: 12px; line-height: 1.35; }
 .area-checklist label input { width: 15px; height: 15px; flex: 0 0 auto; margin: 0; accent-color: var(--gold); }
 .optional-project-fields > div { display: grid; gap: 9px; padding: 0 12px 13px; }
+.optional-project-fields > div > small { color: #8f9aaf; font-size: 11px; }
+.project-year-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.project-year-fields label { display: grid; gap: 7px; }
+.advisor-fields { display: grid; gap: 8px; margin-top: 5px !important; }
+.advisor-fields > div { display: grid; grid-template-columns: 1.2fr 1fr auto; gap: 7px; }
+.advisor-fields button { border: 1px solid rgba(228,189,105,.3); border-radius: 5px; padding: 8px 10px; color: var(--gold-bright); background: transparent; font-size: 10px; cursor: pointer; }
+.advisor-fields > button { justify-self: start; }
 .project-editor .primary-button { margin-top: 5px; }
 .project-form-actions { display: flex; gap: 8px; }
 .project-form-actions .secondary-button { margin-top: 5px; background: transparent; cursor: pointer; }
@@ -244,6 +255,9 @@ footer p { margin-left: auto; } footer > span { margin-left: auto; }
 .profile-projects article > small { display: block; margin: 12px 0; color: #858fa2; }
 .profile-projects article > div { margin-top: 15px; }
 .profile-projects article > a { display: inline-block; margin-top: 20px; color: var(--gold-bright); border-bottom: 1px solid rgba(228,189,105,.35); padding-bottom: 4px; font-size: 10px; }
+.profile-projects .project-people { margin: 9px 0; color: #aab3c2; font-size: 12px; }
+.profile-projects .project-people strong { color: #d6dbe3; font-weight: 500; }
+.keyword-tag { display: inline-block; margin: 4px 5px 0 0; padding: 5px 8px; border-radius: 999px; color: #9dbcf2; background: rgba(120,168,255,.07); border: 1px solid rgba(120,168,255,.2); font-size: 10px; }
 
 @media (max-width: 980px) {
   .site-header { position: relative; }
@@ -265,6 +279,7 @@ footer p { margin-left: auto; } footer > span { margin-left: auto; }
   .auth-panel { padding: 30px 20px; }
   .profile-result { align-items: stretch; flex-direction: column; }
   .area-checklist details > div { grid-template-columns: 1fr; }
+  .project-year-fields, .advisor-fields > div { grid-template-columns: 1fr; }
   .owned-projects article { align-items: stretch; flex-direction: column; }
   .owned-projects article > div:last-child button { flex: 1; }
   .project-form-actions { flex-direction: column; }

@@ -20,6 +20,11 @@ type PublicProject = {
   summary: string | null;
   institution: string | null;
   project_url: string | null;
+  start_year: number | null;
+  end_year: number | null;
+  keywords: string[];
+  participant_names: string[];
+  advisors: Array<{ name: string; institution: string | null }>;
   areas: string[];
 };
 
@@ -51,7 +56,7 @@ export default function PublicProfilePage() {
         const { data: projectRows } = await client
           .from("projects")
           .select(
-            "id, title, level, summary, institution, project_url, created_at",
+            "id, title, level, summary, institution, project_url, start_year, end_year, keywords, participant_names, created_at",
           )
           .eq("owner_person_id", data.id)
           .eq("status", "publicado")
@@ -63,12 +68,24 @@ export default function PublicProfilePage() {
           sub_area_id: string | null;
           custom_area_name: string | null;
         }> = [];
+        let advisorLinks: Array<{
+          project_id: string;
+          advisor_name: string;
+          institution: string | null;
+        }> = [];
         if (projectIds.length) {
-          const { data: links } = await client
-            .from("project_areas")
-            .select("project_id, sub_area_id, custom_area_name")
-            .in("project_id", projectIds);
-          areaLinks = links ?? [];
+          const [areasResponse, advisorsResponse] = await Promise.all([
+            client
+              .from("project_areas")
+              .select("project_id, sub_area_id, custom_area_name")
+              .in("project_id", projectIds),
+            client
+              .from("project_advisors")
+              .select("project_id, advisor_name, institution")
+              .in("project_id", projectIds),
+          ]);
+          areaLinks = areasResponse.data ?? [];
+          advisorLinks = advisorsResponse.data ?? [];
         }
 
         const subAreaIds = areaLinks
@@ -87,6 +104,14 @@ export default function PublicProfilePage() {
         setProjects(
           (projectRows ?? []).map((project) => ({
             ...project,
+            keywords: project.keywords ?? [],
+            participant_names: project.participant_names ?? [],
+            advisors: advisorLinks
+              .filter((advisor) => advisor.project_id === project.id)
+              .map((advisor) => ({
+                name: advisor.advisor_name,
+                institution: advisor.institution,
+              })),
             areas: areaLinks
               .filter((area) => area.project_id === project.id)
               .map(
@@ -177,9 +202,39 @@ export default function PublicProfilePage() {
                     {project.institution && (
                       <small>{project.institution}</small>
                     )}
+                    {(project.start_year || project.end_year) && (
+                      <small>
+                        {project.start_year ?? "Início não informado"}–{
+                          project.end_year ?? "em andamento"
+                        }
+                      </small>
+                    )}
+                    {project.advisors.length > 0 && (
+                      <p className="project-people">
+                        <strong>Orientação:</strong>{" "}
+                        {project.advisors
+                          .map((advisor) =>
+                            advisor.institution
+                              ? `${advisor.name} (${advisor.institution})`
+                              : advisor.name,
+                          )
+                          .join("; ")}
+                      </p>
+                    )}
+                    {project.participant_names.length > 0 && (
+                      <p className="project-people">
+                        <strong>Participantes:</strong>{" "}
+                        {project.participant_names.join("; ")}
+                      </p>
+                    )}
                     <div>
                       {project.areas.map((area) => (
                         <span className="tag" key={area}>{area}</span>
+                      ))}
+                      {project.keywords.map((keyword) => (
+                        <span className="keyword-tag" key={keyword}>
+                          #{keyword}
+                        </span>
                       ))}
                     </div>
                     {project.project_url && (

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "./supabase";
 import { ProjectForm } from "./project-form";
+import {
+  ProfileEditor,
+  type EditableProfile,
+} from "./profile-editor";
 
 const MAX_SESSION_MS = 12 * 60 * 60 * 1000;
 const INACTIVITY_MS = 2 * 60 * 60 * 1000;
@@ -17,11 +21,7 @@ type AuthPanelProps = {
   onSessionChange?: (session: Session | null) => void;
 };
 
-type PersonOption = {
-  id: string;
-  name: string;
-  cohort: number | null;
-};
+type PersonOption = EditableProfile;
 
 export function AuthPanel({
   open,
@@ -139,7 +139,7 @@ export function AuthPanel({
       if (claim) {
         const { data: person } = await client
           .from("people")
-          .select("id, name, cohort")
+          .select("id, name, cohort, bio, personal_url")
           .eq("id", claim.person_id)
           .single();
 
@@ -392,6 +392,10 @@ export function AuthPanel({
                       </small>
                     </form>
                   )}
+                  <ProfileEditor
+                    person={claimedProfile}
+                    onUpdated={setClaimedProfile}
+                  />
                 </>
               ) : (
                 <>
